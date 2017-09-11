@@ -13,8 +13,8 @@ import json
 from utils import array2raster
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--train_tfrecord", help="filename of train_tfrecord",default="/data/psgan/train.tfrecords")
-parser.add_argument("--test_tfrecord", help="filename of test_tfrecord", default="/data/psgan/train.tfrecords")
+parser.add_argument("--train_tfrecord", help="filename of train_tfrecord",default="/data/googledrive/train.tfrecords")
+parser.add_argument("--test_tfrecord", help="filename of test_tfrecord", default="/data/googledrive/test_mmm.tfrecords")
 parser.add_argument("--mode", required=True, choices=["train","test"])
 parser.add_argument("--output_dir", required=True, help="where to put output files")
 parser.add_argument("--checkpoint", default=None, help="directory with checkpoints")
@@ -23,10 +23,10 @@ parser.add_argument("--max_epochs", type=int, help="number of training epochs")
 parser.add_argument("--summary_freq", type=int, default=100, help="update summaries every summary_freq steps")
 parser.add_argument("--progress_freq", type=int, default=50, help="display progress every progress_freq steps")
 parser.add_argument("--trace_freq", type=int, default=0, help="trace execution every trace_freq steps")
-parser.add_argument("--display_freq", type=int, default=0, help="write current training images ever display_freq steps")
-parser.add_argument("--save_freq", type=int, default=5000, help="save model every save_freq steps")
+parser.add_argument("--display_freq", type=int, default=1000, help="write current training images ever display_freq steps")
+parser.add_argument("--save_freq", type=int, default=20000, help="save model every save_freq steps")
 
-parser.add_argument("--batch_size",type=int, default=5, help="number of images in batch")
+parser.add_argument("--batch_size",type=int, default=32, help="number of images in batch")
 
 parser.add_argument("--lr", type=float, default=0.0002, help="initial learning rate for adam")
 parser.add_argument("--beta1", type=float, default=0.5, help="momentum term of adam")
@@ -34,12 +34,12 @@ parser.add_argument("--l1_weight", type=float, default=100.0, help="weight on L1
 parser.add_argument("--gan_weight", type=float, default=1.0, help="weight on GAN term for generator gradient")
 
 parser.add_argument("--ndf", type=int, default=32, help="number of generator filters in first conv layer")
-parser.add_argument("--train_count", type=int, default=10,help="number of training data")
+parser.add_argument("--train_count", type=int, default=64000,help="number of training data")
 parser.add_argument("--test_count", type=int, default=384, help="number of test data")
 a=parser.parse_args()
 
 EPS = 1e-12
-Examples = collections.namedtuple("Examples", "imnames, inputs1, inputs2, targets, steps_per_epoch")
+Examples = collections.namedtuple("Examples", "inputs1, inputs2, targets, steps_per_epoch")
 Model = collections.namedtuple("Model", "outputs, predict_real, predict_fake, discrim_loss, discrim_grads_and_vars, gen_loss_GAN, gen_loss_L1, gen_grads_and_vars, train")
 def conv(batch_input, kernel_size, out_channels, stride):
     with tf.variable_scope("conv"):
@@ -246,7 +246,6 @@ def load_examples():
 
     features = tf.parse_single_example(serialized_example,
                                        features={
-                                           'im_name': tf.FixedLenFeature([],tf.string),
                                            'im_mul_raw': tf.FixedLenFeature([], tf.string),
                                            'im_blur_raw': tf.FixedLenFeature([], tf.string),
                                            'im_pan_raw': tf.FixedLenFeature([], tf.string)
@@ -262,17 +261,16 @@ def load_examples():
     im_pan_raw = tf.reshape(im_pan_raw, [128, 128, 1])
     im_pan_raw=tf.cast(im_pan_raw, tf.float32)
     if a.mode == 'train':
-        imnames_batch, inputs1_batch, inputs2_batch, targets_batch = tf.train.shuffle_batch([features['im_name'], im_blur_raw, im_pan_raw, im_mul_raw],
+        inputs1_batch, inputs2_batch, targets_batch = tf.train.shuffle_batch([im_blur_raw, im_pan_raw, im_mul_raw],
                                               batch_size=a.batch_size, capacity=200,
                                               min_after_dequeue=100)
         steps_per_epoch = int(a.train_count / a.batch_size)
     elif a.mode =='test':
-        imnames_batch, inputs1_batch, inputs2_batch, targets_batch = tf.train.batch([features['im_name'],im_blur_raw, im_pan_raw, im_mul_raw],
+        inputs1_batch, inputs2_batch, targets_batch = tf.train.batch([im_blur_raw, im_pan_raw, im_mul_raw],
                                               batch_size=a.batch_size, capacity=200)
         steps_per_epoch = int(a.test_count / a.batch_size)
 
     return Examples(
-        imnames=imnames_batch,
         inputs1=inputs1_batch,
         inputs2=inputs2_batch,
         targets=targets_batch,
@@ -284,8 +282,8 @@ def save_images(fetches, step=None):
     if not os.path.exists(image_dir):
         os.makedirs(image_dir)
 
-    for i, in_path in enumerate(fetches["imnames"]):
-        name, _ = os.path.splitext(os.path.basename(in_path.decode("utf8")))
+    for i in range((fetches["inputs1"].shape[0])):
+        name = '%d'%i
         for kind in ["inputs1","inputs2", "outputs", "targets"]:
             filename = name + "-" + kind + ".tif"
             if step is not None:
@@ -316,7 +314,6 @@ def main():
 
     with tf.name_scope("images"):
         display_fetches = {
-            "imnames": examples.imnames,
             "inputs1": examples.inputs1,
             "inputs2": examples.inputs2,
             "targets": examples.targets,
