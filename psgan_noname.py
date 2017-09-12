@@ -13,8 +13,8 @@ import json
 from utils import array2raster
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--train_tfrecord", help="filename of train_tfrecord",default="/data/googledrive/train.tfrecords")
-parser.add_argument("--test_tfrecord", help="filename of test_tfrecord", default="/data/googledrive/test_mmm.tfrecords")
+parser.add_argument("--train_tfrecord", help="filename of train_tfrecord",default="/data/psgan/tfrecords/train.tfrecords")
+parser.add_argument("--test_tfrecord", help="filename of test_tfrecord", default="/data/psgan/tfrecords/test_mmm.tfrecords")
 parser.add_argument("--mode", required=True, choices=["train","test"])
 parser.add_argument("--output_dir", required=True, help="where to put output files")
 parser.add_argument("--checkpoint", default=None, help="directory with checkpoints")
@@ -285,9 +285,14 @@ def save_images(fetches, step=None):
     for i in range((fetches["inputs1"].shape[0])):
         name = '%d'%i
         for kind in ["inputs1","inputs2", "outputs", "targets"]:
-            filename = name + "-" + kind + ".tif"
-            if step is not None:
-                filename = "%08d-%s" % (step, filename)
+            if a.mode == "train":
+                filename = "train-"+ name + "-" + kind + ".tif"
+                if step is not None:
+                    filename = "%08d-%s" % (step, filename)
+            else:
+                name = '%d'%(i+a.batch_size*step)
+                filename = "test-" + name + "-" + kind +".tif"
+
             out_path = os.path.join(image_dir, filename)
             contents = fetches[kind][i]
             if kind is not "inputs2":
@@ -369,10 +374,10 @@ def main():
             max_steps = a.max_steps
 
         if a.mode == "test":
-            max_steps = min(examples.steps_per_epoch, max_steps)
-            for step in range(max_steps):
+            max_steps = int(a.test_count/a.batch_size)
+            for i in range(max_steps):
                 results = sess.run(display_fetches)
-                save_images(results)
+                save_images(results, i)
         else:
             start = time.time()
 
